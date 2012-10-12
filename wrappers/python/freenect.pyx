@@ -26,6 +26,8 @@ from libc.stdint cimport *
 import numpy as np
 cimport numpy as npc
 
+npc.import_array()
+
 cdef extern from "numpy/arrayobject.h":
     void import_array()
     cdef object PyArray_SimpleNewFromData(int nd, npc.npy_intp *dims,
@@ -49,6 +51,8 @@ cdef extern from "libfreenect.h":
         FREENECT_DEPTH_10BIT
         FREENECT_DEPTH_11BIT_PACKED
         FREENECT_DEPTH_10BIT_PACKED
+        FREENECT_DEPTH_REGISTERED
+        FREENECT_DEPTH_MM
 
     ctypedef enum freenect_led_options:
         FREENECT_LED_OFF "LED_OFF"
@@ -136,7 +140,6 @@ cdef extern from "libfreenect_sync.h":
     int freenect_sync_get_depth(void **depth, uint32_t *timestamp, int index, freenect_depth_format fmt) nogil
     void freenect_sync_stop()
 
-
 VIDEO_RGB = FREENECT_VIDEO_RGB
 VIDEO_BAYER = FREENECT_VIDEO_BAYER
 VIDEO_IR_8BIT = FREENECT_VIDEO_IR_8BIT
@@ -148,6 +151,8 @@ DEPTH_11BIT = FREENECT_DEPTH_11BIT
 DEPTH_10BIT = FREENECT_DEPTH_10BIT
 DEPTH_11BIT_PACKED = FREENECT_DEPTH_11BIT_PACKED
 DEPTH_10BIT_PACKED = FREENECT_DEPTH_10BIT_PACKED
+DEPTH_REGISTERED = FREENECT_DEPTH_REGISTERED
+DEPTH_MM = FREENECT_DEPTH_MM
 LED_OFF = FREENECT_LED_OFF
 LED_GREEN = FREENECT_LED_GREEN
 LED_RED = FREENECT_LED_RED
@@ -335,7 +340,7 @@ class Kill(Exception):
     """This kills the runloop, raise from the body only"""
 
 
-def runloop(depth=None, video=None, body=None, dev=None):
+def runloop(depth=None, video=None, body=None, dev=None, depth_mode=FREENECT_DEPTH_11BIT, video_mode=FREENECT_VIDEO_RGB):
     """Sets up the kinect and maintains a runloop
 
     This is where most of the action happens.  You can get the dev pointer from the callback
@@ -374,11 +379,11 @@ def runloop(depth=None, video=None, body=None, dev=None):
     devp = mdev._ptr
     ctxp = mdev.ctx._ptr
     if depth is not None:
-        freenect_set_depth_mode(devp, freenect_find_depth_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_DEPTH_11BIT))
+        freenect_set_depth_mode(devp, freenect_find_depth_mode(FREENECT_RESOLUTION_MEDIUM, depth_mode))
         freenect_start_depth(devp)
         freenect_set_depth_callback(devp, depth_cb)
     if video is not None:
-        freenect_set_video_mode(devp, freenect_find_video_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_VIDEO_RGB))
+        freenect_set_video_mode(devp, freenect_find_video_mode(FREENECT_RESOLUTION_MEDIUM, video_mode))
         freenect_start_video(devp)
         freenect_set_video_callback(devp, video_cb)
     try:
@@ -476,7 +481,7 @@ def sync_get_depth(index=0, format=DEPTH_11BIT):
     if out:
         error_open_device()
         return
-    if format == DEPTH_11BIT:
+    if format in [DEPTH_11BIT, DEPTH_10BIT, DEPTH_REGISTERED, DEPTH_MM]:
         dims[0], dims[1]  = 480, 640
         return PyArray_SimpleNewFromData(2, dims, npc.NPY_UINT16, data), timestamp
     else:
