@@ -140,6 +140,60 @@ cdef extern from "libfreenect_sync.h":
     int freenect_sync_get_depth(void **depth, uint32_t *timestamp, int index, freenect_depth_format fmt) nogil
     void freenect_sync_stop()
 
+cdef extern from "libfreenect-registration.h":
+    ctypedef struct freenect_reg_info:
+        int32_t dx_center    # not used by mapping algorithm
+        int32_t ax
+        int32_t bx
+        int32_t cx
+        int32_t dx
+        int32_t dx_start
+        int32_t ay
+        int32_t by
+        int32_t cy
+        int32_t dy
+        int32_t dy_start
+        int32_t dx_beta_start
+        int32_t dy_beta_start
+        int32_t rollout_blank    # not used by mapping algorithm
+        int32_t rollout_size    # not used by mapping algorithm
+        int32_t dx_beta_inc
+        int32_t dy_beta_inc
+        int32_t dxdx_start
+        int32_t dxdy_start
+        int32_t dydx_start
+        int32_t dydy_start
+        int32_t dxdxdx_start
+        int32_t dydxdx_start
+        int32_t dxdxdy_start
+        int32_t dydxdy_start
+        int32_t back_comp1    # not used by mapping algorithm
+        int32_t dydydx_start
+        int32_t back_comp2    # not used by mapping algorithm
+        int32_t dydydy_start
+
+    ctypedef struct freenect_reg_pad_info:
+        uint16_t start_lines
+        uint16_t end_lines
+        uint16_t cropping_lines
+
+    ctypedef struct freenect_zero_plane_info:
+        float dcmos_emitter_dist    # Distance between IR camera and IR emitter, in cm.
+        float dcmos_rcmos_dist    # Distance between IR camera and RGB camera, in cm.
+        float reference_distance    # The focal length of the IR camera, in mm.
+        float reference_pixel_size    # The size of a single pixel on the zero plane, in mm.
+
+    ctypedef struct freenect_registration:
+        freenect_reg_info reg_info
+        freenect_reg_pad_info reg_pad_info
+        freenect_zero_plane_info zero_plane_info
+        double const_shift
+        uint16_t* raw_to_mm_shift    # Length FREENECT_DEPTH_RAW_MAX_VALUE - 2048
+        int32_t* depth_to_rgb_shift    # Length FREENECT_DEPTH_MM_MAX_VALUE - 10000
+        int32_t (*registration_table)[2]    # Table of 640*480 pairs of x,y values - index first by pixel, then x:0 and y:1.
+
+    freenect_registration freenect_copy_registration(freenect_device* dev)
+
 VIDEO_RGB = FREENECT_VIDEO_RGB
 VIDEO_BAYER = FREENECT_VIDEO_BAYER
 VIDEO_IR_8BIT = FREENECT_VIDEO_IR_8BIT
@@ -165,7 +219,6 @@ RESOLUTION_HIGH = FREENECT_RESOLUTION_HIGH
 DEVICE_MOTOR = FREENECT_DEVICE_MOTOR
 DEVICE_CAMERA = FREENECT_DEVICE_CAMERA
 DEVICE_AUDIO = FREENECT_DEVICE_AUDIO
-
 
 cdef class CtxPtr:
     cdef freenect_context* _ptr
@@ -274,6 +327,53 @@ def get_tilt_degs(StatePtr state):
 
 def error_open_device():
     print("Error: Can't open device. 1.) is it plugged in? 2.) Read the README")
+
+cdef class Reg:
+    cdef freenect_registration _reg
+    def __repr__(self):
+        return "<Registration Parameters>"
+
+    def _get_reg_info(self):
+        return self._reg.reg_info
+
+    def _get_reg_pad_info(self):
+        return self._reg.reg_pad_info
+
+    def _get_zero_plane_info(self):
+        return self._reg.zero_plane_info
+
+    def _get_shift(self):
+        return self._reg.const_shift
+
+    def _get_raw_to_mm_shift(self):
+        cdef npc.npy_intp dims[1]
+        dims[0] = 2048
+        return PyArray_SimpleNewFromData(1, dims, npc.NPY_UINT16, self._reg.raw_to_mm_shift)
+
+    def _get_depth_to_rgb_shift(self):
+        cdef npc.npy_intp dims[1]
+        dims[0] = 10000
+        return PyArray_SimpleNewFromData(1, dims, npc.NPY_INT32, self._reg.depth_to_rgb_shift)
+
+    def _get_registration_table(self):
+        cdef npc.npy_intp dims[2]
+        dims[0], dims[1]  = 480, 640
+        return PyArray_SimpleNewFromData(2, dims, npc.NPY_INT32, self._reg.registration_table)
+
+    reg_info = property(_get_reg_info)
+    reg_pad_info = property(_get_reg_pad_info)
+    zero_plane_info = property(_get_zero_plane_info)
+    const_shift = property(_get_shift)
+    raw_to_mm_shift = property(_get_raw_to_mm_shift)
+    depth_to_rgb_shift = property(_get_depth_to_rgb_shift)
+    registration_table = property(_get_registration_table)
+
+def copy_registration(DevPtr dev):
+    cdef freenect_registration registration = freenect_copy_registration(dev._ptr)
+    cdef Reg reg_out
+    reg_out = Reg()
+    reg_out._reg = registration
+    return reg_out
 
 cpdef init():
     cdef freenect_context* ctx
