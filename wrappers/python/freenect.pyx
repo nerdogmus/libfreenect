@@ -357,7 +357,7 @@ cdef class Reg:
 
     def _get_registration_table(self):
         cdef npc.npy_intp dims[2]
-        dims[0], dims[1]  = 480, 640
+        dims[0], dims[1]  = 480*640, 2
         return PyArray_SimpleNewFromData(2, dims, npc.NPY_INT32, self._reg.registration_table)
 
     reg_info = property(_get_reg_info)
